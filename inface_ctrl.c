@@ -5,19 +5,33 @@
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 extern lv_obj_t *parent;
 static lv_style_t style;
 static lv_style_t style_rect; /* 定义一个样式变量 */
 static lv_style_t style_label;
 extern lv_obj_t *bmeun;
+lv_obj_t *bin_ui;
+// CPU负载测试相关
+static int cpu_stress_running = 0;
+static pthread_t stress_thread[4]; // 创建4个线程
+static int thread_count = 4;
+void* cpu_stress_worker(void* arg);
+void start_cpu_stress();
+void stop_cpu_stress();
+void stress_button_event_cb(lv_event_t * e);
 int get_cpu_used();
 void timer_cb(lv_timer_t *timer);
-void init_arc_timer(lv_obj_t *arc);
+void init_arc_timer(lv_obj_t *arc, lv_obj_t *label);
+void set_cpu_use_percent(lv_event_t * e);
+int cpu_use_date=0;
+static lv_obj_t *cpu_percent_label = NULL; // 全局变量保存CPU百分比标签引用
+static lv_obj_t *status_label_global = NULL; // 全局变量保存状态标签引用
 void begin()
 {
     // 主界面
-    lv_obj_t *bin_ui = lv_obj_create(parent);
+    bin_ui = lv_obj_create(parent);
     lv_obj_set_size(bin_ui, 760, 600);
     lv_obj_set_pos(bin_ui, 200, 0); /* 设置 x 和 y 坐标 */
     lv_obj_align(bin_ui, LV_ALIGN_TOP_RIGHT, 0, 0);
@@ -46,10 +60,7 @@ void begin()
     lv_arc_set_range(cpu_use, 0, 100);                  // 范围0到100，对应0%到100%
     lv_arc_set_value(cpu_use, 0);                       // 初始值设为0
     // lv_obj_set_style_bg_color(cpu_use, lv_color_hex3(0xf60), LV_PART_KNOB);
-    // 我们需要一个定时器来周期性地获取CPU使用率并更新弧形控件的显示
-    init_arc_timer(cpu_use);
     
-
     lv_obj_remove_style(cpu_use, NULL, LV_PART_KNOB);
     lv_obj_t *cpu_use_labe = lv_label_create(bin_ui);
     lv_obj_align_to(cpu_use_labe, cpu_use, LV_ALIGN_BOTTOM_MID, 0, 30);
@@ -61,8 +72,32 @@ void begin()
     //显示cpu的使用百分比，用lable设置实时显示
     lv_obj_t *cpu_use_percent = lv_label_create(bin_ui);
     lv_obj_align_to(cpu_use_percent, cpu_use, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_style(cpu_use_percent, &style_label, 0);
-
+    lv_obj_add_style(cpu_use_percent, &style_label, cpu_use_date);
+    // 修复：传递cpu_use作为用户数据，而不是NULL
+    lv_obj_add_event_cb(cpu_use_percent, set_cpu_use_percent, LV_EVENT_REFRESH,&cpu_use_date);
+    lv_obj_send_event(cpu_use_percent, LV_EVENT_REFRESH, NULL);
+    
+    // 我们需要一个定时器来周期性地获取CPU使用率并更新弧形控件的显示
+    init_arc_timer(cpu_use, cpu_use_percent);
+    
+    // 添加CPU压力测试按钮
+    lv_obj_t *stress_btn = lv_button_create(bmeun);
+    lv_obj_set_size(stress_btn, 150, 50);
+    lv_obj_t *avtar = lv_obj_get_child(bmeun, 0); // 获取avtar控件
+    lv_obj_align_to(stress_btn, avtar, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
+    lv_obj_add_event_cb(stress_btn, stress_button_event_cb, LV_EVENT_CLICKED, NULL);
+    
+    lv_obj_t *btn_label = lv_label_create(stress_btn);
+    lv_label_set_text(btn_label, "Start Stress Test");
+    lv_obj_center(btn_label);
+    
+    // 添加状态显示标签
+    lv_obj_t *status_label = lv_label_create(bmeun);
+    lv_obj_align_to(status_label, stress_btn, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 10);
+    lv_obj_add_style(status_label, &style_label, 0);
+    lv_label_set_text(status_label, "Status: Idle");
+    status_label_global = status_label; // 保存引用
+    
     return;
 }
 
@@ -108,7 +143,7 @@ int get_cpu_used()
 
     last_total = total;
     last_idle = idle;
-
+    cpu_use_date=cpu_used;
     return cpu_used;
 }
 
@@ -123,6 +158,13 @@ void timer_cb(lv_timer_t *timer)
         // 更新弧形显示
         lv_arc_set_value(arc, cpu_usage); // 推荐方式，如果LVGL版本支持
 
+        // 更新CPU百分比文本标签
+        if (cpu_percent_label != NULL) {
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%d%%", cpu_usage);
+            lv_label_set_text(cpu_percent_label, buf);
+        }
+
         // 或者通过角度设置（如果版本较旧）
         // int end_angle = (cpu_usage * 360) / 100;
         // lv_arc_set_angles(arc, 0, end_angle);
@@ -130,19 +172,108 @@ void timer_cb(lv_timer_t *timer)
         // 可选：动态改变指示弧的颜色（例如：使用率超过80%变为红色）
         if (cpu_usage > 80)
         {
-            lv_obj_set_style_arc_color(arc, lv_palette_main(LV_PALETTE_RED), LV_PART_INDICATOR);
+            lv_obj_set_style_arc_color(arc, lv_color_hex(0xFF0000), LV_PART_INDICATOR);
         }
         else
         {
-            lv_obj_set_style_arc_color(arc, lv_palette_main(LV_PALETTE_BLUE), LV_PART_INDICATOR);
+            lv_obj_set_style_arc_color(arc, lv_color_hex(0x0000FF), LV_PART_INDICATOR);
         }
     }
 }
 
 // 在程序初始化部分创建定时器
-void init_arc_timer(lv_obj_t *arc)
+void init_arc_timer(lv_obj_t *arc, lv_obj_t *label)
 {
+    cpu_percent_label = label; // 保存标签引用到全局变量
     // 创建定时器，每1000毫秒（1秒）执行一次，并将弧形控件作为用户数据传递
     lv_timer_t *timer = lv_timer_create(timer_cb, 1000, arc); // 假设arc已创建
     lv_timer_set_repeat_count(timer, -1);                     // 设置无限重复
+}
+void set_cpu_use_percent(lv_event_t * e)
+{
+    lv_obj_t * cpu_use_percent=lv_event_get_target(e);
+    // 获取当前的CPU使用率
+    int cpu_usage = cpu_use_date; // 使用前面定义的函数获取CPU使用率
+    // 更新标签文本
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d%%", cpu_usage);
+    lv_label_set_text(cpu_use_percent, buf);
+}
+
+// CPU压力测试工作线程
+void* cpu_stress_worker(void* arg)
+{
+    int thread_id = (int)(long)arg;
+    printf("CPU stress test thread %d started...\n", thread_id);
+    
+    while (cpu_stress_running) {
+        // 执行复杂的数学运算来增加CPU负载
+        volatile double result = thread_id * 1.0;
+        for (int i = 0; i < 2000000; i++) {
+            result += sin(i + thread_id) * cos(i + thread_id) * tan(i + thread_id);
+            result = sqrt(fabs(result) + 1);
+            // 增加更多计算
+            result *= log(fabs(result) + 1);
+        }
+        // 短暂休息，避免完全锁死系统
+        usleep(500); // 0.5毫秒
+    }
+    
+    printf("CPU stress test thread %d finished\n", thread_id);
+    return NULL;
+}
+
+// 启动CPU压力测试
+void start_cpu_stress()
+{
+    if (!cpu_stress_running) {
+        cpu_stress_running = 1;
+        printf("Starting %d CPU stress test threads...\n", thread_count);
+        for (int i = 0; i < thread_count; i++) {
+            if (pthread_create(&stress_thread[i], NULL, cpu_stress_worker, (void*)(long)i) != 0) {
+                printf("Failed to create stress test thread %d\n", i);
+                cpu_stress_running = 0;
+                return;
+            }
+        }
+    }
+}
+
+// 停止CPU压力测试
+void stop_cpu_stress()
+{
+    if (cpu_stress_running) {
+        cpu_stress_running = 0;
+        for (int i = 0; i < thread_count; i++) {
+            pthread_join(stress_thread[i], NULL);
+        }
+        printf("All CPU stress test threads have been stopped\n");
+    }
+}
+
+// 压力测试按钮事件回调
+void stress_button_event_cb(lv_event_t * e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t * btn = (lv_obj_t*)lv_event_get_target(e);
+    
+    if(code == LV_EVENT_CLICKED) {
+        if (!cpu_stress_running) {
+            start_cpu_stress();
+            lv_obj_t * label = lv_obj_get_child(btn, 0);
+            lv_label_set_text(label, "Stop Stress Test");
+            if (status_label_global != NULL) {
+                lv_label_set_text(status_label_global, "Status: Stress Testing");
+            }
+            printf("Starting CPU stress test\n");
+        } else {
+            stop_cpu_stress();
+            lv_obj_t * label = lv_obj_get_child(btn, 0);
+            lv_label_set_text(label, "Start Stress Test");
+            if (status_label_global != NULL) {
+                lv_label_set_text(status_label_global, "Status: Idle");
+            }
+            printf("Stopping CPU stress test\n");
+        }
+    }
 }
