@@ -13,6 +13,10 @@ static lv_style_t style_rect; /* 定义一个样式变量 */
 static lv_style_t style_label;
 extern lv_obj_t *bmeun;
 lv_obj_t *bin_ui;
+
+// 外部函数声明
+extern void init_memory_monitor(); // 内存监控初始化函数
+
 // CPU负载测试相关
 static int cpu_stress_running = 0;
 static pthread_t stress_thread[4]; // 创建4个线程
@@ -92,12 +96,18 @@ void begin()
     lv_obj_center(btn_label);
     
     // 添加状态显示标签
+    /*
     lv_obj_t *status_label = lv_label_create(bmeun);
     lv_obj_align_to(status_label, stress_btn, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 10);
     lv_obj_add_style(status_label, &style_label, 0);
     lv_label_set_text(status_label, "Status: Idle");
     status_label_global = status_label; // 保存引用
     
+    */
+    
+    
+    init_memory_monitor();// 初始化内存监控界面
+
     return;
 }
 

@@ -45,7 +45,8 @@ void B_meun(void)
     bmeun = lv_obj_create(parent);
     lv_obj_set_size(bmeun,200,600);
     lv_obj_t * avtar = lv_img_create(bmeun);
-    void lv_image_set_src(avtar, img_test);
+    // 注释掉有问题的函数调用
+    // void lv_image_set_src(avtar, img_test);
     lv_img_set_src(avtar, "A:/lying/lvgl/img.bmp");
     lv_obj_set_width(avtar, LV_SIZE_CONTENT);
     lv_obj_set_height(avtar, LV_SIZE_CONTENT);
