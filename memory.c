@@ -113,7 +113,7 @@ void create_memory_monitor() {
     // 获取cpu_use_labe控件
     
     lv_obj_t *cpu_use_lable = lv_obj_get_child(bin_ui,2); 
-    lv_obj_align_to(memory_title, cpu_use_lable, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
+    lv_obj_align_to(memory_title, cpu_use_lable, LV_ALIGN_OUT_BOTTOM_MID, 0, 50);
     //lv_obj_align(memory_title, LV_ALIGN_TOP_LEFT, 300, 200);
     
     // 创建内存条背景矩形
