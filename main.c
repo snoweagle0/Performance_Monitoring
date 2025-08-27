@@ -6,12 +6,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "media.h"
 
 lv_obj_t *parent;
 lv_obj_t * bmeun;
 
 // 启动界面相关变量
 static lv_obj_t *boot_screen = NULL;
+static lv_obj_t *start_btn = NULL;
 static int boot_finished = 0;
 
 // 函数声明
@@ -20,6 +22,7 @@ void begin();
 void show_boot_screen(void);
 void start_button_event_cb(lv_event_t * e);
 void hide_boot_screen(void);
+void check_audio_status(lv_timer_t *timer);
 int main(void)
 {
     lv_init();
@@ -96,58 +99,79 @@ void show_boot_screen(void)
     lv_obj_set_style_pad_all(boot_screen, 0, 0);
     lv_obj_set_style_margin_all(boot_screen, 0, 0);
 
-    // 创建启动图片 - 自适应全屏显示
+    // 创建启动图片 - 使用LVGL原生缩放API
     lv_obj_t *boot_img = lv_img_create(boot_screen);
     lv_img_set_src(boot_img, "A:./resource/boot_img.bmp");
     
-    // 等待图片加载完成
-    lv_timer_handler();
-    usleep(10000);
+    // 立即设置为透明，避免图片闪现
+    lv_obj_set_style_img_opa(boot_img, LV_OPA_TRANSP, 0);
     
-    // 获取图片的原始尺寸
-    lv_coord_t img_w = lv_obj_get_width(boot_img);
-    lv_coord_t img_h = lv_obj_get_height(boot_img);
-    
-    printf("Original image size: %d x %d\n", img_w, img_h);
-    printf("Screen size: 1024 x 600\n");
-    
-    // 计算缩放比例以适应屏幕，保持宽高比
-    float scale_x = 1024.0f / img_w;
-    float scale_y = 600.0f / img_h;
-    float scale = (scale_x < scale_y) ? scale_x : scale_y; // 选择较小的缩放比例
-    
-    printf("Scale factors: x=%.3f, y=%.3f, final=%.3f\n", scale_x, scale_y, scale);
-    
-    // 计算缩放后的实际尺寸
-    lv_coord_t scaled_w = (lv_coord_t)(img_w * scale);
-    lv_coord_t scaled_h = (lv_coord_t)(img_h * scale);
-    
-    printf("Scaled image size: %d x %d\n", scaled_w, scaled_h);
-    
-    // 使用变换矩阵进行缩放（LVGL v8/v9的方法）
-    // 或者直接设置对象大小让LVGL自动缩放
-    if (scale < 1.0f) {
-        // 如果需要缩小，设置目标大小让LVGL自动处理
-        lv_obj_set_size(boot_img, scaled_w, scaled_h);
-        printf("Applied scaling by setting size to %d x %d\n", scaled_w, scaled_h);
-    } else {
-        // 如果不需要缩放或需要放大，保持原始大小
-        lv_obj_set_size(boot_img, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-        printf("Using original image size\n");
+    // 给图片加载充足时间
+    for(int i = 0; i < 25; i++) {
+        lv_timer_handler();
+        usleep(20000); // 增加加载时间
     }
     
-    // 居中对齐
-    lv_obj_align(boot_img, LV_ALIGN_CENTER, 0, 0);
+    // 获取屏幕尺寸
+    lv_coord_t screen_width = lv_obj_get_width(lv_scr_act());
+    lv_coord_t screen_height = lv_obj_get_height(lv_scr_act());
+    printf("Screen size: %d x %d\n", screen_width, screen_height);
     
-    // 设置图片样式
-    lv_obj_set_style_pad_all(boot_img, 0, 0);
-    lv_obj_set_style_margin_all(boot_img, 0, 0);
+    // 获取图片对象的实际尺寸（加载后）
+    lv_coord_t img_width = lv_obj_get_width(boot_img);
+    lv_coord_t img_height = lv_obj_get_height(boot_img);
+    printf("Image object size: %d x %d\n", img_width, img_height);
     
-    // 创建 Start 按钮 - 覆盖在图片上面
-    lv_obj_t *start_btn = lv_btn_create(boot_screen);
+    // 确保图片已经加载
+    if (img_width > 0 && img_height > 0) {
+        // 计算缩放比例（LVGL使用256作为100%的基准）
+        uint16_t zoom_factor_width = 256; // 默认100%
+        uint16_t zoom_factor_height = 256;
+        
+        // 计算基于宽度的缩放比例
+        if (img_width > screen_width) {
+            zoom_factor_width = (screen_width * 256) / img_width;
+        }
+        
+        // 计算基于高度的缩放比例  
+        if (img_height > screen_height) {
+            zoom_factor_height = (screen_height * 256) / img_height;
+        }
+        
+        // 选择较小的缩放比例以确保图片完全显示在屏幕内
+        uint16_t zoom_factor = (zoom_factor_width < zoom_factor_height) ? zoom_factor_width : zoom_factor_height;
+        
+        printf("Zoom factors: width=%d, height=%d, selected=%d (%.1f%%)\n", 
+               zoom_factor_width, zoom_factor_height, zoom_factor, (zoom_factor * 100.0f / 256));
+        
+        // 应用缩放 - 使用LVGL的缩放API
+        if (zoom_factor != 256) {
+            lv_img_set_zoom(boot_img, zoom_factor);
+            printf("Applied zoom factor: %d\n", zoom_factor);
+        } else {
+            printf("No zoom needed, using original size\n");
+        }
+        
+    } else {
+        printf("Warning: Could not get image dimensions, image may not be loaded\n");
+        // 尝试设置一个适中的缩放
+        lv_img_set_zoom(boot_img, 200); // 约78%缩放
+    }
+    
+    // 将图片居中显示
+    lv_obj_center(boot_img);
+    printf("Image centered on screen\n");
+    
+    printf("Image display setup completed\n");
+    
+    // 创建 Start 按钮 - 覆盖在图片上面，但初始为禁用状态
+    start_btn = lv_btn_create(boot_screen);
     lv_obj_set_size(start_btn, 200, 60);
     lv_obj_align(start_btn, LV_ALIGN_BOTTOM_MID, 0, -30); // 从底部向上30像素
     lv_obj_add_event_cb(start_btn, start_button_event_cb, LV_EVENT_CLICKED, NULL);
+    
+    // 初始禁用按钮，直到音频播放完成
+    lv_obj_add_state(start_btn, LV_STATE_DISABLED);
     
     // 设置按钮样式 - 半透明背景以确保在图片上可见
     lv_obj_set_style_bg_color(start_btn, lv_palette_main(LV_PALETTE_BLUE), 0);
@@ -160,12 +184,25 @@ void show_boot_screen(void)
     lv_obj_set_style_shadow_color(start_btn, lv_color_black(), 0);
     lv_obj_set_style_shadow_opa(start_btn, LV_OPA_50, 0);
     
+    // 禁用状态样式 - 灰色显示
+    lv_obj_set_style_bg_color(start_btn, lv_palette_main(LV_PALETTE_GREY), LV_STATE_DISABLED);
+    lv_obj_set_style_bg_opa(start_btn, LV_OPA_50, LV_STATE_DISABLED);
+    
     // 创建按钮标签
     lv_obj_t *btn_label = lv_label_create(start_btn);
-    lv_label_set_text(btn_label, "START");
+    lv_label_set_text(btn_label, "Loading...");
     lv_obj_set_style_text_color(btn_label, lv_color_white(), 0);
     lv_obj_set_style_text_font(btn_label, &lv_font_montserrat_20, 0);
     lv_obj_center(btn_label);
+    
+    // 启动媒体功能 - 渐变动画和音频播放
+    init_boot_media(boot_img);
+    
+    // 创建定时器检查音频播放状态
+    lv_timer_t *status_timer = lv_timer_create(check_audio_status, 500, btn_label);
+    lv_timer_set_repeat_count(status_timer, -1); // 无限重复直到删除
+    
+    printf("Boot screen initialization completed\n");
 }
 
 // Start 按钮事件回调
@@ -174,9 +211,42 @@ void start_button_event_cb(lv_event_t * e)
     lv_event_code_t code = lv_event_get_code(e);
     
     if(code == LV_EVENT_CLICKED) {
-        printf("Start button clicked, hiding boot screen...\n");
-        hide_boot_screen();
-        boot_finished = 1; // 标记启动界面结束
+        // 严格检查：必须媒体完全准备好且按钮未被禁用
+        if (is_boot_media_ready() && !lv_obj_has_state(start_btn, LV_STATE_DISABLED)) {
+            printf("Start button clicked, all media completed, hiding boot screen...\n");
+            hide_boot_screen();
+            boot_finished = 1; // 标记启动界面结束
+        } else {
+            printf("Start button clicked but conditions not met - Media ready: %s, Button disabled: %s\n", 
+                   is_boot_media_ready() ? "YES" : "NO",
+                   lv_obj_has_state(start_btn, LV_STATE_DISABLED) ? "YES" : "NO");
+        }
+    }
+}
+
+// 音频状态检查回调
+void check_audio_status(lv_timer_t *timer)
+{
+    lv_obj_t *btn_label = (lv_obj_t *)timer->user_data;
+    
+    if (is_boot_media_ready()) {
+        // 所有启动媒体都已完成，启用按钮
+        lv_obj_clear_state(start_btn, LV_STATE_DISABLED);
+        lv_label_set_text(btn_label, "START");
+        printf("All boot media completed (fade + audio), button enabled\n");
+        
+        // 删除定时器
+        lv_timer_delete(timer);
+    } else {
+        // 媒体还未完全准备好，保持禁用状态
+        static int dots = 0;
+        dots = (dots + 1) % 4;
+        char loading_text[20];
+        strcpy(loading_text, "Loading");
+        for(int i = 0; i < dots; i++) {
+            strcat(loading_text, ".");
+        }
+        lv_label_set_text(btn_label, loading_text);
     }
 }
 

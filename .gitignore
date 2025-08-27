@@ -1,4 +1,5 @@
 ./vscode
 /build
+/testcode
 /resource
 resource.tar
