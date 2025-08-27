@@ -16,6 +16,7 @@ lv_obj_t *bin_ui;
 
 // 外部函数声明
 extern void init_memory_monitor(); // 内存监控初始化函数
+extern void init_lock_exit_buttons(void); // Lock和Exit按钮初始化函数
 
 // CPU负载测试相关
 static int cpu_stress_running = 0;
@@ -31,7 +32,6 @@ void init_arc_timer(lv_obj_t *arc, lv_obj_t *label);
 void set_cpu_use_percent(lv_event_t * e);
 int cpu_use_date=0;
 static lv_obj_t *cpu_percent_label = NULL; // 全局变量保存CPU百分比标签引用
-static lv_obj_t *status_label_global = NULL; // 全局变量保存状态标签引用
 void begin()
 {
     // 主界面
@@ -95,18 +95,8 @@ void begin()
     lv_label_set_text(btn_label, "Start Stress Test");
     lv_obj_center(btn_label);
     
-    // 添加状态显示标签
-    /*
-    lv_obj_t *status_label = lv_label_create(bmeun);
-    lv_obj_align_to(status_label, stress_btn, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 10);
-    lv_obj_add_style(status_label, &style_label, 0);
-    lv_label_set_text(status_label, "Status: Idle");
-    status_label_global = status_label; // 保存引用
-    
-    */
-    
-    
     init_memory_monitor();// 初始化内存监控界面
+    init_lock_exit_buttons(); // 初始化Lock和Exit按钮（放在最后，这样可以正确定位）
 
     return;
 }
@@ -272,17 +262,11 @@ void stress_button_event_cb(lv_event_t * e)
             start_cpu_stress();
             lv_obj_t * label = lv_obj_get_child(btn, 0);
             lv_label_set_text(label, "Stop Stress Test");
-            if (status_label_global != NULL) {
-                lv_label_set_text(status_label_global, "Status: Stress Testing");
-            }
             printf("Starting CPU stress test\n");
         } else {
             stop_cpu_stress();
             lv_obj_t * label = lv_obj_get_child(btn, 0);
             lv_label_set_text(label, "Start Stress Test");
-            if (status_label_global != NULL) {
-                lv_label_set_text(status_label_global, "Status: Idle");
-            }
             printf("Stopping CPU stress test\n");
         }
     }

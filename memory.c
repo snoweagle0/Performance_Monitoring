@@ -136,7 +136,7 @@ void create_memory_monitor() {
     
     // 设置内存条样式
     lv_style_init(&memory_bar_style);
-    lv_style_set_bg_color(&memory_bar_style, lv_color_hex(0x00FF00)); // 默认绿色
+    lv_style_set_bg_color(&memory_bar_style, lv_color_hex(0x0000FF)); // 默认绿色
     lv_style_set_border_width(&memory_bar_style, 0);
     lv_style_set_radius(&memory_bar_style, 3);
     // 确保内存条紧贴左侧，不留边距
@@ -247,30 +247,38 @@ void create_memory_test_button() {
     lv_obj_t *mem_test_btn = lv_button_create(bmeun);
     lv_obj_set_size(mem_test_btn, 150, 50);
     
-    // 定位按钮：在现有按钮下方
-    lv_obj_t *existing_btn = NULL;
-    // 查找现有的压力测试按钮
+    // 定位按钮：在所有现有按钮的最下方
+    lv_obj_t *last_btn = NULL;
+    // 查找最后一个按钮
     for(int i = 0; i < lv_obj_get_child_count(bmeun); i++) {
         lv_obj_t *child = lv_obj_get_child(bmeun, i);
-        if(lv_obj_check_type(child, &lv_button_class)) {
-            existing_btn = child;
-            break;
+        if(lv_obj_check_type(child, &lv_button_class) && child != mem_test_btn) {
+            last_btn = child;
         }
     }
     
-    if(existing_btn != NULL) {
-        lv_obj_align_to(mem_test_btn, existing_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
+    if(last_btn != NULL) {
+        lv_obj_align_to(mem_test_btn, last_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
+        printf("Memory test button positioned below last button\n");
     } else {
         // 如果没有找到现有按钮，则放在avatar下方
         lv_obj_t *avtar = lv_obj_get_child(bmeun, 0);
         lv_obj_align_to(mem_test_btn, avtar, LV_ALIGN_OUT_BOTTOM_MID, 0, 120);
+        printf("Memory test button positioned below avatar\n");
     }
     
     lv_obj_add_event_cb(mem_test_btn, memory_test_button_event_cb, LV_EVENT_CLICKED, NULL);
     
+    // 设置按钮样式 - 使用蓝色（与Lock按钮一致）
+    lv_obj_set_style_bg_color(mem_test_btn, lv_palette_main(LV_PALETTE_BLUE), 0);
+    lv_obj_set_style_bg_color(mem_test_btn, lv_palette_darken(LV_PALETTE_BLUE, 2), LV_STATE_PRESSED);
+    
     lv_obj_t *btn_label = lv_label_create(mem_test_btn);
     lv_label_set_text(btn_label, "Start Mem Test");
+    lv_obj_set_style_text_color(btn_label, lv_color_white(), 0);
     lv_obj_center(btn_label);
+    
+    printf("Memory test button created successfully\n");
 }
 
 // 内存测试工作线程

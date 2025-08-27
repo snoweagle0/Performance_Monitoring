@@ -23,6 +23,7 @@ void show_boot_screen(void);
 void start_button_event_cb(lv_event_t * e);
 void hide_boot_screen(void);
 void check_audio_status(lv_timer_t *timer);
+extern int should_program_exit(void); // 检查程序是否应该退出
 int main(void)
 {
     lv_init();
@@ -55,41 +56,41 @@ int main(void)
     {
         lv_timer_handler();
         usleep(5000);
+        
+        // 检查是否应该退出程序
+        if (should_program_exit()) {
+            printf("Program exit requested, cleaning up...\n");
+            break;
+        }
     }
+    
+    printf("Program exiting normally\n");
 
     return 0;
 }
-LV_IMAGE_DECLARE(test_img);
 
 void B_meun(void)
 {
-    /* 在活动屏幕上，创建一个基础对象
-   默认大小
-   */
-    /* 设置该基础对象parent的大小 */
+    // 创建主界面基础对象
     parent=lv_obj_create(lv_screen_active());
     lv_obj_set_size(parent, 1024, 600);
-    /* 在基础对象parent上，创建一个子对象child */
-    //lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_ROW_WRAP);
 
     bmeun = lv_obj_create(parent);
     lv_obj_set_size(bmeun,200,600);
     lv_obj_t * avtar = lv_img_create(bmeun);
-    // 注释掉有问题的函数调用
-    // void lv_image_set_src(avtar, img_test);
-    lv_img_set_src(avtar, "A:./resource/img.bmp"); // 更新图片路径
+    lv_img_set_src(avtar, "A:./resource/img.bmp");
     lv_obj_set_width(avtar, LV_SIZE_CONTENT);
     lv_obj_set_height(avtar, LV_SIZE_CONTENT);
-    //lv_image_set_scale(avtar, 64);
     lv_obj_align(avtar, LV_ALIGN_TOP_MID, 0, 0);
 
-    // 播放声音资源
     return;
 }
 
 // 显示启动界面
 void show_boot_screen(void)
 {
+    printf("Starting boot screen creation...\n");
+    
     // 创建全屏启动界面
     boot_screen = lv_obj_create(lv_screen_active());
     lv_obj_set_size(boot_screen, LV_PCT(100), LV_PCT(100));
@@ -101,15 +102,83 @@ void show_boot_screen(void)
 
     // 创建启动图片 - 使用LVGL原生缩放API
     lv_obj_t *boot_img = lv_img_create(boot_screen);
-    lv_img_set_src(boot_img, "A:./resource/boot_img.bmp");
     
     // 立即设置为透明，避免图片闪现
     lv_obj_set_style_img_opa(boot_img, LV_OPA_TRANSP, 0);
     
-    // 给图片加载充足时间
-    for(int i = 0; i < 25; i++) {
-        lv_timer_handler();
-        usleep(20000); // 增加加载时间
+    // 尝试加载图片，增加重试机制
+    bool image_loaded = false;
+    const int max_attempts = 50;
+    
+    for(int attempt = 1; attempt <= max_attempts; attempt++) {
+        lv_img_set_src(boot_img, "A:./resource/boot_img.bmp");
+        
+        // 给图片加载时间
+        for(int i = 0; i < 10; i++) {
+            lv_timer_handler();
+            usleep(10000); // 10ms
+        }
+        
+        // 检查图片是否加载成功
+        lv_coord_t test_width = lv_obj_get_width(boot_img);
+        lv_coord_t test_height = lv_obj_get_height(boot_img);
+        
+        if (test_width > 0 && test_height > 0) {
+            printf("Image loaded successfully after %d attempts: %d x %d\n", attempt, test_width, test_height);
+            image_loaded = true;
+            break;
+        }
+        
+        if (attempt % 10 == 0) {
+            printf("Still loading image... attempt %d/%d\n", attempt, max_attempts);
+        }
+        
+        usleep(20000); // 20ms延迟再重试
+    }
+    
+    if (!image_loaded) {
+        printf("Error: Failed to load image after %d attempts\n", max_attempts);
+        printf("Attempting image recovery strategies...\n");
+        
+        // 尝试重新创建图片对象
+        lv_obj_del(boot_img);
+        boot_img = lv_img_create(boot_screen);
+        lv_obj_set_style_img_opa(boot_img, LV_OPA_TRANSP, 0);
+        
+        printf("Trying longer loading time...\n");
+        lv_img_set_src(boot_img, "A:./resource/boot_img.bmp");
+        for(int i = 0; i < 100; i++) {
+            lv_timer_handler();
+            usleep(50000); // 更长的等待时间
+        }
+        
+        lv_coord_t final_width = lv_obj_get_width(boot_img);
+        lv_coord_t final_height = lv_obj_get_height(boot_img);
+        
+        if (final_width > 0 && final_height > 0) {
+            printf("Image loaded after recovery: %d x %d\n", final_width, final_height);
+            image_loaded = true;
+        } else {
+            printf("All recovery strategies failed, creating placeholder rectangle\n");
+            
+            // 创建一个可见的占位符矩形
+            lv_obj_del(boot_img);
+            boot_img = lv_obj_create(boot_screen);
+            lv_obj_set_size(boot_img, 400, 300);
+            lv_obj_set_style_bg_color(boot_img, lv_color_hex(0x444444), 0);
+            lv_obj_set_style_bg_opa(boot_img, LV_OPA_TRANSP, 0); // 初始透明
+            lv_obj_set_style_border_color(boot_img, lv_color_white(), 0);
+            lv_obj_set_style_border_width(boot_img, 2, 0);
+            lv_obj_set_style_radius(boot_img, 10, 0);
+            
+            // 给UI时间处理尺寸设置
+            for(int i = 0; i < 10; i++) {
+                lv_timer_handler();
+                usleep(10000);
+            }
+            
+            printf("Placeholder created: %d x %d\n", lv_obj_get_width(boot_img), lv_obj_get_height(boot_img));
+        }
     }
     
     // 获取屏幕尺寸
@@ -162,7 +231,7 @@ void show_boot_screen(void)
     lv_obj_center(boot_img);
     printf("Image centered on screen\n");
     
-    printf("Image display setup completed\n");
+    printf("Image display setup completed, image should be transparent\n");
     
     // 创建 Start 按钮 - 覆盖在图片上面，但初始为禁用状态
     start_btn = lv_btn_create(boot_screen);
@@ -213,13 +282,9 @@ void start_button_event_cb(lv_event_t * e)
     if(code == LV_EVENT_CLICKED) {
         // 严格检查：必须媒体完全准备好且按钮未被禁用
         if (is_boot_media_ready() && !lv_obj_has_state(start_btn, LV_STATE_DISABLED)) {
-            printf("Start button clicked, all media completed, hiding boot screen...\n");
+            printf("Start button clicked, hiding boot screen...\n");
             hide_boot_screen();
             boot_finished = 1; // 标记启动界面结束
-        } else {
-            printf("Start button clicked but conditions not met - Media ready: %s, Button disabled: %s\n", 
-                   is_boot_media_ready() ? "YES" : "NO",
-                   lv_obj_has_state(start_btn, LV_STATE_DISABLED) ? "YES" : "NO");
         }
     }
 }
@@ -257,5 +322,11 @@ void hide_boot_screen(void)
         lv_obj_del(boot_screen);
         boot_screen = NULL;
         printf("Boot screen hidden\n");
+        
+        // 如果主界面存在且被隐藏，则重新显示
+        if (parent != NULL && lv_obj_has_flag(parent, LV_OBJ_FLAG_HIDDEN)) {
+            lv_obj_clear_flag(parent, LV_OBJ_FLAG_HIDDEN);
+            printf("Main interface restored from lock state\n");
+        }
     }
 }
