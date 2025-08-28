@@ -18,6 +18,22 @@ lv_obj_t *bin_ui;
 extern void init_memory_monitor(); // 内存监控初始化函数
 extern void init_lock_exit_buttons(void); // Lock和Exit按钮初始化函数
 
+// 系统信息面板相关变量
+static lv_obj_t *info_panel = NULL;
+static lv_obj_t *clock_label = NULL;
+static lv_obj_t *date_label = NULL;
+static lv_obj_t *ip_label = NULL;
+static lv_obj_t *network_status_label = NULL;
+static lv_timer_t *info_timer = NULL;
+
+// 系统信息面板函数声明
+void create_info_panel(void);
+void update_clock_display(void);
+void update_network_status(void);
+void info_timer_cb(lv_timer_t *timer);
+char* get_local_ip(void);
+int is_network_connected(void);
+
 // CPU负载测试相关
 static int cpu_stress_running = 0;
 static pthread_t stress_thread[4]; // 创建4个线程
@@ -39,6 +55,10 @@ void begin()
     lv_obj_set_size(bin_ui, 760, 600);
     lv_obj_set_pos(bin_ui, 200, 0); /* 设置 x 和 y 坐标 */
     lv_obj_align(bin_ui, LV_ALIGN_TOP_RIGHT, 0, 0);
+    
+    // 禁用滚动条和滚动功能
+    lv_obj_set_scrollbar_mode(bin_ui, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(bin_ui, LV_OBJ_FLAG_SCROLLABLE);
     lv_style_init(&style_rect); /* 初始化样式 */
     // lv_style_set_bg_color(&style_rect, lv_palette_main(LV_PALETTE_BLUE));            /* 设置背景色 */
     lv_style_set_border_color(&style_rect, lv_palette_main(LV_PALETTE_DEEP_ORANGE)); /* 设置边框颜色 */
@@ -94,6 +114,9 @@ void begin()
     lv_obj_t *btn_label = lv_label_create(stress_btn);
     lv_label_set_text(btn_label, "Start Stress Test");
     lv_obj_center(btn_label);
+    
+    // 创建系统信息面板
+    create_info_panel();
     
     init_memory_monitor();// 初始化内存监控界面
     init_lock_exit_buttons(); // 初始化Lock和Exit按钮（放在最后，这样可以正确定位）
@@ -269,5 +292,229 @@ void stress_button_event_cb(lv_event_t * e)
             lv_label_set_text(label, "Start Stress Test");
             printf("Stopping CPU stress test\n");
         }
+    }
+}
+
+// 创建系统信息面板
+void create_info_panel(void)
+{
+    if (bin_ui == NULL) {
+        printf("Error: bin_ui is NULL, cannot create info panel\n");
+        return;
+    }
+    
+    // 创建信息面板容器 - 定位在bin_ui的右侧区域
+    info_panel = lv_obj_create(bin_ui);
+    lv_obj_set_size(info_panel, 320, 350);
+    lv_obj_align(info_panel, LV_ALIGN_TOP_RIGHT, -10, 50);
+    
+    // 禁用滚动条和滚动功能
+    lv_obj_set_scrollbar_mode(info_panel, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(info_panel, LV_OBJ_FLAG_SCROLLABLE);
+    
+    // 设置容器样式
+    lv_obj_set_style_bg_color(info_panel, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_color(info_panel, lv_color_hex(0x444444), 0);
+    lv_obj_set_style_border_width(info_panel, 1, 0);
+    lv_obj_set_style_radius(info_panel, 8, 0);
+    lv_obj_set_style_pad_all(info_panel, 15, 0);
+    
+    // 创建标题
+    lv_obj_t *title_label = lv_label_create(info_panel);
+    lv_obj_set_style_text_color(title_label, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_20, 0);
+    lv_label_set_text(title_label, "System Info");
+    lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 5);
+    
+    // 创建时钟显示
+    clock_label = lv_label_create(info_panel);
+    lv_obj_set_style_text_color(clock_label, lv_color_hex(0x00ff00), 0);
+    lv_obj_set_style_text_font(clock_label, &lv_font_montserrat_28, 0);
+    lv_label_set_text(clock_label, "00:00:00");
+    lv_obj_align_to(clock_label, title_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
+    
+    // 创建日期显示
+    date_label = lv_label_create(info_panel);
+    lv_obj_set_style_text_color(date_label, lv_color_hex(0xcccccc), 0);
+    lv_obj_set_style_text_font(date_label, &lv_font_montserrat_16, 0);
+    lv_label_set_text(date_label, "2025-08-27");
+    lv_obj_align_to(date_label, clock_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
+    
+    // 创建网络状态标题
+    lv_obj_t *network_title = lv_label_create(info_panel);
+    lv_obj_set_style_text_color(network_title, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_font(network_title, &lv_font_montserrat_18, 0);
+    lv_label_set_text(network_title, "Network Status");
+    lv_obj_align_to(network_title, date_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 30);
+    
+    // 创建IP地址显示
+    lv_obj_t *ip_title = lv_label_create(info_panel);
+    lv_obj_set_style_text_color(ip_title, lv_color_hex(0xaaaaaa), 0);
+    lv_obj_set_style_text_font(ip_title, &lv_font_montserrat_16, 0);
+    lv_label_set_text(ip_title, "IP Address:");
+    lv_obj_align_to(ip_title, network_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
+    
+    ip_label = lv_label_create(info_panel);
+    lv_obj_set_style_text_color(ip_label, lv_color_hex(0x00aaff), 0);
+    lv_obj_set_style_text_font(ip_label, &lv_font_montserrat_18, 0);
+    lv_label_set_text(ip_label, "Getting...");
+    lv_obj_align_to(ip_label, ip_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
+    
+    // 创建连接状态显示
+    lv_obj_t *status_title = lv_label_create(info_panel);
+    lv_obj_set_style_text_color(status_title, lv_color_hex(0xaaaaaa), 0);
+    lv_obj_set_style_text_font(status_title, &lv_font_montserrat_16, 0);
+    lv_label_set_text(status_title, "Connection:");
+    lv_obj_align_to(status_title, ip_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
+    
+    network_status_label = lv_label_create(info_panel);
+    lv_obj_set_style_text_color(network_status_label, lv_color_hex(0xffaa00), 0);
+    lv_obj_set_style_text_font(network_status_label, &lv_font_montserrat_16, 0);
+    lv_label_set_text(network_status_label, "Checking...");
+    lv_obj_align_to(network_status_label, status_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
+    
+    // 立即更新一次信息
+    update_clock_display();
+    update_network_status();
+    
+    // 创建定时器，每秒更新一次
+    info_timer = lv_timer_create(info_timer_cb, 1000, NULL);
+    lv_timer_set_repeat_count(info_timer, -1);
+    
+    printf("System info panel created successfully\n");
+}
+
+// 更新时钟显示
+void update_clock_display(void)
+{
+    time_t rawtime;
+    struct tm *timeinfo;
+    char time_str[16];
+    char date_str[16];
+    
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    
+    // 格式化时间
+    strftime(time_str, sizeof(time_str), "%H:%M:%S", timeinfo);
+    strftime(date_str, sizeof(date_str), "%Y-%m-%d", timeinfo);
+    
+    // 更新标签
+    if (clock_label != NULL) {
+        lv_label_set_text(clock_label, time_str);
+    }
+    if (date_label != NULL) {
+        lv_label_set_text(date_label, date_str);
+    }
+}
+
+// 获取本地IP地址
+char* get_local_ip(void)
+{
+    static char ip_str[32] = "N/A";
+    FILE *fp;
+    char buffer[256];
+    
+    // 首先尝试使用hostname -I 命令获取IP地址
+    fp = popen("hostname -I 2>/dev/null | awk '{print $1}'", "r");
+    if (fp != NULL) {
+        if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+            // 去除换行符
+            buffer[strcspn(buffer, "\n")] = 0;
+            if (strlen(buffer) > 7) { // 至少要有x.x.x.x的格式
+                strncpy(ip_str, buffer, sizeof(ip_str) - 1);
+                ip_str[sizeof(ip_str) - 1] = '\0';
+                pclose(fp);
+                return ip_str;
+            }
+        }
+        pclose(fp);
+    }
+    
+    // 如果第一种方法失败，尝试使用ip命令
+    fp = popen("ip route get 8.8.8.8 2>/dev/null | awk '{print $7; exit}'", "r");
+    if (fp != NULL) {
+        if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+            buffer[strcspn(buffer, "\n")] = 0;
+            if (strlen(buffer) > 7) {
+                strncpy(ip_str, buffer, sizeof(ip_str) - 1);
+                ip_str[sizeof(ip_str) - 1] = '\0';
+                pclose(fp);
+                return ip_str;
+            }
+        }
+        pclose(fp);
+    }
+    
+    // 如果还是失败，尝试使用ifconfig
+    fp = popen("ifconfig 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print $2}'", "r");
+    if (fp != NULL) {
+        if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+            buffer[strcspn(buffer, "\n")] = 0;
+            if (strlen(buffer) > 7) {
+                strncpy(ip_str, buffer, sizeof(ip_str) - 1);
+                ip_str[sizeof(ip_str) - 1] = '\0';
+            }
+        }
+        pclose(fp);
+    }
+    
+    printf("Debug: Got IP address: %s\n", ip_str);
+    return ip_str;
+}
+
+// 检查网络连接状态
+int is_network_connected(void)
+{
+    FILE *fp;
+    char buffer[256];
+    int connected = 0;
+    
+    // 检查网络接口状态
+    fp = popen("ip route | grep default", "r");
+    if (fp != NULL) {
+        if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+            connected = 1; // 有默认路由说明网络已连接
+        }
+        pclose(fp);
+    }
+    
+    return connected;
+}
+
+// 更新网络状态
+void update_network_status(void)
+{
+    char *ip = get_local_ip();
+    int connected = is_network_connected();
+    
+    // 更新IP地址
+    if (ip_label != NULL) {
+        lv_label_set_text(ip_label, ip);
+    }
+    
+    // 更新连接状态
+    if (network_status_label != NULL) {
+        if (connected) {
+            lv_label_set_text(network_status_label, "Connected");
+            lv_obj_set_style_text_color(network_status_label, lv_color_hex(0x00ff00), 0);
+        } else {
+            lv_label_set_text(network_status_label, "Disconnected");
+            lv_obj_set_style_text_color(network_status_label, lv_color_hex(0xff0000), 0);
+        }
+    }
+}
+
+// 信息面板定时器回调
+void info_timer_cb(lv_timer_t *timer)
+{
+    update_clock_display();
+    
+    // 网络状态更新频率较低，每10秒更新一次
+    static int network_update_counter = 0;
+    network_update_counter++;
+    if (network_update_counter >= 10) {
+        update_network_status();
+        network_update_counter = 0;
     }
 }

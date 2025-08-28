@@ -74,9 +74,17 @@ void B_meun(void)
     // 创建主界面基础对象
     parent=lv_obj_create(lv_screen_active());
     lv_obj_set_size(parent, 1024, 600);
+    
+    // 禁用滚动条和滚动功能
+    lv_obj_set_scrollbar_mode(parent, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
     bmeun = lv_obj_create(parent);
     lv_obj_set_size(bmeun,200,600);
+    
+    // 禁用滚动条和滚动功能
+    lv_obj_set_scrollbar_mode(bmeun, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(bmeun, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t * avtar = lv_img_create(bmeun);
     lv_img_set_src(avtar, "A:./resource/img.bmp");
     lv_obj_set_width(avtar, LV_SIZE_CONTENT);
