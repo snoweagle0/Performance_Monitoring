@@ -1,5 +1,12 @@
+<<<<<<< HEAD
 ./vscode
 /build
 /testcode
 
+=======
+./vscode
+/build
+/testcode
+
+>>>>>>> 10753538bc69c7885235a8dce5e419152119448f
 resource.tar

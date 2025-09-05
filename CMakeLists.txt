@@ -37,7 +37,11 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 add_subdirectory(lvgl)
 target_include_directories(lvgl PUBLIC ${PROJECT_SOURCE_DIR})
 
+<<<<<<< HEAD
 add_executable(main main.c mouse_cursor_icon.c inface_ctrl.c memory.c media.c media.h LockingandExiting.c LockingandExiting.h)
+=======
+add_executable(main main.c mouse_cursor_icon.c inface_ctrl.c memory.c media.c media.h LockingandExiting.c)
+>>>>>>> 10753538bc69c7885235a8dce5e419152119448f
 
 # 注释掉这行，如果要使用DRM驱动，则需要放开这行
 # include(${CMAKE_CURRENT_LIST_DIR}/lvgl/tests/FindLibDRM.cmake)
